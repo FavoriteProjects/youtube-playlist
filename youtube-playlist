@@ -1,0 +1,75 @@
+#!/usr/bin/python
+
+import httplib2
+import os
+import sys
+
+import ConfigParser
+import argparse
+import logging
+
+from apiclient.discovery import build
+from oauth2client.client import flow_from_clientsecrets
+from oauth2client.file import Storage
+from oauth2client.tools import argparser, run_flow
+
+# Init logging
+logging.basicConfig()
+logger = logging.getLogger(sys.argv[0])
+logger.setLevel(logging.INFO)
+
+# Parse command line options
+parser = argparse.ArgumentParser(description='YouTube Playlist Mass-Uploader')
+parser.add_argument('--version', action='version', version='%(prog)s 0.1.5')
+parser.set_defaults(notify=True)
+args = parser.parse_args()
+
+# Read config file
+config = ConfigParser.SafeConfigParser()
+config.read(os.path.join('etc', sys.argv[0] + '.conf'))
+
+# Create API flow
+flow = flow_from_clientsecrets(
+  config.get('General', 'secrets_file'),
+  message='missing or incorrect client secrets json file',
+  scope=config.get('General', 'scope'))
+
+storage = Storage('%s-oauth2.json' % sys.argv[0])
+credentials = storage.get()
+
+if credentials is None or credentials.invalid:
+  flags = argparser.parse_args()
+  credentials = run_flow(flow, storage, flags)
+
+# Build API service
+youtube = build(
+  config.get('General', 'service'),
+  config.get('General', 'version'),
+  http=credentials.authorize(httplib2.Http()))
+
+# Insert videos into the playlist
+playlist_id = config.get('YouTube', 'playlist_id')
+with open(config.get('General', 'input_file'), 'r') as f:
+  for video_id in f:
+
+    video_id = video_id.rstrip('\n')
+    if len(video_id) < 11:
+      logger.warning('Skipping incorrect video id %s' % video_id)
+      continue
+
+    logger.info('Inserting video id %s' % video_id)
+    playlists_insert_response = youtube.playlistItems().insert(
+      part='snippet,status',
+      body=dict(
+        snippet=dict(
+          playlistId=playlist_id,
+          resourceId=dict(
+            videoId=video_id,
+            kind='youtube#video'
+          )
+        )
+      )
+    ).execute()
+
+    logger.info(
+      'Inserted video successful: %s' % playlists_insert_response['id'])

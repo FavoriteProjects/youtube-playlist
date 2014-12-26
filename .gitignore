@@ -1,0 +1,9 @@
+# Mac finder artifacts
+.DS_Store
+
+# vim artifacts
+**.swp
+
+# oauth2 artifacts
+/*-oauth2.json
+/etc/client_secrets.json
